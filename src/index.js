@@ -11,7 +11,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(
   cors({
-    origin: "http://localhost:5173", // Allow frontend (Vite dev server)
+    origin: "https://voosh-rag-frontend-hazel.vercel.app/", // Allow frontend (Vite dev server)
     methods: ["GET", "POST"],
   })
 );
