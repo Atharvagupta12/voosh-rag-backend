@@ -11,8 +11,8 @@ const app = express();
 app.use(bodyParser.json());
 app.use(
   cors({
-    origin: "https://voosh-rag-frontend-hazel.vercel.app/", // Allow frontend (Vite dev server)
-    methods: ["GET", "POST"],
+    origin: "https://voosh-rag-frontend-hazel.vercel.app", 
+    methods: ["GET", "POST", "DELETE"],
   })
 );
 
@@ -25,5 +25,5 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 Backend running on ${PORT}`);
 });
