@@ -5,60 +5,95 @@ import redisClient from "../utils/redisClient.js";
 
 const router = express.Router();
 
-// Start chat session
 router.post("/chat", async (req, res) => {
   try {
     const { sessionId, query } = req.body;
-    const sid = sessionId || uuidv4();
 
+    if (!query) {
+      return res.status(400).json({ error: "Query is required" });
+    }
+
+    const sid = sessionId || uuidv4();
     let answer;
+
     try {
+      console.log(`[Chat] Generating answer for query: "${query}"`);
       answer = await getAnswer(query);
+      console.log(`[Chat] Answer generated: "${answer}"`);
     } catch (err) {
-      console.error("Retriever error:", err.message);
+      console.error("[Chat] Retriever error:", err);
       answer = ` (Dummy reply) You asked: "${query}"`;
     }
 
-    // Save to Redis (optional)
-    await redisClient.rpush(
-      `session:${sid}`,
-      JSON.stringify({ role: "user", text: query })
-    );
-    await redisClient.rpush(
-      `session:${sid}`,
-      JSON.stringify({ role: "bot", text: answer })
-    );
+    // Save user query and bot answer to Redis
+    try {
+      await redisClient.rpush(
+        `session:${sid}`,
+        JSON.stringify({ role: "user", text: query })
+      );
+      await redisClient.rpush(
+        `session:${sid}`,
+        JSON.stringify({ role: "bot", text: answer })
+      );
+      console.log(`[Chat] Saved conversation in Redis for session: ${sid}`);
+    } catch (err) {
+      console.error("[Chat] Redis error:", err);
+    }
 
     res.json({ sessionId: sid, answer });
-  } catch (error) {
-    console.error("Chat error:", error.message);
+  } catch (err) {
+    console.error("[Chat] General error:", err);
     res.status(500).json({ error: "Something went wrong in chat route" });
   }
 });
 
-// Fetch chat history (safe fallback if Redis not used)
+// =======================
+// GET /api/history/:sessionId
+// =======================
 router.get("/history/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const history = await redisClient.lrange(`session:${sessionId}`, 0, -1);
-    res.json(history.map((h) => JSON.parse(h)));
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID is required" });
+    }
 
-    res.json([]); // empty history fallback
+    let history = [];
+    try {
+      const data = await redisClient.lrange(`session:${sessionId}`, 0, -1);
+      history = data.map((item) => JSON.parse(item));
+      console.log(`[History] Fetched history for session: ${sessionId}`);
+    } catch (err) {
+      console.error("[History] Redis error:", err);
+    }
+
+    res.json(history);
   } catch (err) {
-    console.error("History error:", err.message);
+    console.error("[History] General error:", err);
     res.status(500).json({ error: "Could not fetch history" });
   }
 });
 
-// Reset session
+// =======================
+// DELETE /api/reset/:sessionId
+// =======================
 router.delete("/reset/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
-    await redisClient.del(`session:${sessionId}`);
-    res.json({ msg: "Session cleared" });
+    if (!sessionId) {
+      return res.status(400).json({ error: "Session ID is required" });
+    }
+
+    try {
+      await redisClient.del(`session:${sessionId}`);
+      console.log(`[Reset] Cleared session: ${sessionId}`);
+      res.json({ msg: "Session cleared" });
+    } catch (err) {
+      console.error("[Reset] Redis error:", err);
+      res.status(500).json({ error: "Could not reset session" });
+    }
   } catch (err) {
-    console.error("Reset error:", err.message);
-    res.status(500).json({ error: "Could not reset session" });
+    console.error("[Reset] General error:", err);
+    res.status(500).json({ error: "Something went wrong" });
   }
 });
 
