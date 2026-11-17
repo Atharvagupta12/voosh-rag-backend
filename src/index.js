@@ -1,32 +1,42 @@
-import express from "express";
-import bodyParser from "body-parser";
-import dotenv from "dotenv";
-import cors from "cors";
-import chatRoutes from "./routes/chat.js";
+import { config, describeConfig } from "./config.js";
+import { createApp } from "./app.js";
+import { createLogger } from "./lib/logger.js";
+import { sessionStore } from "./services/sessionStore.js";
 
-dotenv.config();
-const app = express();
+const log = createLogger("server");
+const app = createApp();
 
-// Middlewares
-app.use(bodyParser.json());
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://voosh-rag-frontend-hazel.vercel.app"
-    ],
-    methods: ["GET", "POST", "DELETE"],
-  })
-);
-
-// Routes
-app.use("/api", chatRoutes);
-
-app.get("/", (req, res) => {
-  res.send("Server is running. Use /api/chat to interact.");
+const server = app.listen(config.port, (err) => {
+  // Express 5 reports listen errors (e.g. EADDRINUSE) through this callback.
+  if (err) {
+    log.error(`Could not start on port ${config.port}: ${err.message}`);
+    process.exit(1);
+  }
+  const d = describeConfig();
+  log.info(`Dispatch API listening on http://localhost:${config.port}`);
+  log.info(
+    `vector store: ${d.vectorStore} | sessions: ${d.sessionStore} | llm: ${d.llmProviders.join(" → ") || "NONE"} | embeddings: ${d.embeddings}`
+  );
+  if (!d.llmProviders.length) {
+    log.warn("No LLM key set (GEMINI_API_KEY / GROQ_API_KEY / OPENAI_API_KEY): chat will fail.");
+  }
+  if (d.embeddings === "missing") log.warn("JINA_API_KEY is not set: retrieval will fail.");
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running on ${PORT}`);
-});
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`${signal} received, shutting down…`);
+  const force = setTimeout(() => process.exit(1), 10_000);
+  force.unref();
+  server.close(async () => {
+    await sessionStore.close();
+    process.exit(0);
+  });
+  server.closeIdleConnections?.();
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("unhandledRejection", (reason) => log.error("Unhandled rejection", reason));

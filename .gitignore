@@ -1,8 +1,13 @@
 # dependencies
 /node_modules
 
-# environment
+# environment (keep the example)
 .env
+.env.*
+!.env.example
+
+# temp files from the local index writer
+data/*.tmp
 
 # logs
 npm-debug.log*
